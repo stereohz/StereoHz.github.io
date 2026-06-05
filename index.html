@@ -157,6 +157,15 @@
     opacity: 0;
     animation: fadeUp 0.8s 0.2s forwards;
   }
+  /* particle canvas */
+  #heroCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
   .hero-title {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 500;
@@ -164,10 +173,27 @@
     font-size: clamp(72px, 12vw, 180px);
     line-height: 0.92;
     letter-spacing: -1px;
-    color: var(--white);
     opacity: 0;
-    animation: fadeUp 0.8s 0.4s forwards;
+    display: inline-block;
+    background: linear-gradient(
+      90deg,
+      #9a9690 0%,
+      #9a9690 15%,
+      #ffffff 50%,
+      #9a9690 85%,
+      #9a9690 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: fadeUp 0.8s 0.4s forwards, textShimmer 6s 1.2s linear infinite;
   }
+  @keyframes textShimmer {
+    0%   { background-position: 0% center; }
+    100% { background-position: 200% center; }
+  }
+
   .hero-scroll {
     position: absolute;
     right: 48px;
@@ -178,14 +204,15 @@
     gap: 10px;
     font-family: 'Space Mono', monospace;
     font-size: 9px;
-    letter-spacing: 2px;
-    color: var(--muted);
+    letter-spacing: 3px;
+    color: #FF6B4A;
+    text-transform: uppercase;
     opacity: 0;
-    animation: fadeUp 0.8s 1s forwards;
+    animation: fadeUp 0.8s 1.8s forwards;
   }
   .scroll-line {
-    width: 1px; height: 50px;
-    background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
+    width: 1px; height: 56px;
+    background: linear-gradient(to bottom, rgba(255,107,74,0.8), transparent);
     animation: scrollAnim 2s infinite;
   }
   @keyframes scrollAnim {
@@ -198,6 +225,7 @@
     from { opacity: 0; transform: translateY(24px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  .hero-scroll span { color: #FF6B4A; }
 
   /* SECTIONS */
   section { padding: 110px 48px; position: relative; z-index: 1; }
@@ -593,6 +621,7 @@
 
 <!-- HERO -->
 <section class="hero">
+  <canvas id="heroCanvas"></canvas>
   <div class="hero-circle"></div>
   <div class="hero-circle2"></div>
   <div class="hero-rule top"></div>
@@ -601,7 +630,7 @@
   <h1 class="hero-title">StereoHz</h1>
   <div class="hero-scroll">
     <div class="scroll-line"></div>
-    Scroll
+    <span>Scroll</span>
   </div>
 </section>
 
@@ -805,15 +834,68 @@
   }, { threshold: 0.1 });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-  // Custom cursor
-  const dot = document.getElementById('cursorDot');
+  // ── PARTICLE CANVAS ──
+  const canvas = document.getElementById('heroCanvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize() {
+    W = canvas.width  = canvas.offsetWidth;
+    H = canvas.height = canvas.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor() { this.reset(true); }
+    reset(init) {
+      this.x = Math.random() * W;
+      this.y = init ? Math.random() * H : H + 10;
+      this.size = Math.random() * 1.5 + 0.3;
+      this.speedY = Math.random() * 0.4 + 0.1;
+      this.speedX = (Math.random() - 0.5) * 0.15;
+      this.opacity = Math.random() * 0.5 + 0.1;
+      this.life = 0;
+      this.maxLife = Math.random() * 400 + 300;
+      // spawn at random height so screen stays full at all times
+      if (!init) {
+        this.y = H + 10;
+        // occasionally spawn mid-screen to replenish gaps
+        if (Math.random() < 0.3) this.y = Math.random() * H;
+      }
+    }
+    update() {
+      this.x += this.speedX;
+      this.y -= this.speedY;
+      this.life++;
+      if (this.y < -10 || this.life > this.maxLife) this.reset(false);
+    }
+    draw() {
+      const fade = Math.min(this.life / 80, 1) * Math.min((this.maxLife - this.life) / 80, 1);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${this.opacity * fade})`;
+      ctx.fill();
+    }
+  }
+
+  for (let i = 0; i < 140; i++) particles.push(new Particle());
+
+  function animParticles() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => { p.update(); p.draw(); });
+    requestAnimationFrame(animParticles);
+  }
+  animParticles();
+
+  // ── CUSTOM CURSOR ──
+  const dot  = document.getElementById('cursorDot');
   const ring = document.getElementById('cursorRing');
   let mx = window.innerWidth / 2, my = window.innerHeight / 2;
   let rx = mx, ry = my;
 
   document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
 
-  // Trail particles
   const TRAIL_COUNT = 8;
   const trail = [];
   for (let i = 0; i < TRAIL_COUNT; i++) {
@@ -826,17 +908,12 @@
   }
 
   function animCursor() {
-    // Dot follows instantly
     dot.style.left = mx + 'px';
     dot.style.top  = my + 'px';
-
-    // Ring lags behind
     rx += (mx - rx) * 0.22;
     ry += (my - ry) * 0.22;
     ring.style.left = rx + 'px';
     ring.style.top  = ry + 'px';
-
-    // Trail: each follows the previous
     let px = mx, py = my;
     trail.forEach(t => {
       t.x += (px - t.x) * 0.55;
@@ -845,12 +922,10 @@
       t.el.style.top  = t.y + 'px';
       px = t.x; py = t.y;
     });
-
     requestAnimationFrame(animCursor);
   }
   animCursor();
 
-  // Expand ring on hover
   document.querySelectorAll('a, button').forEach(el => {
     el.addEventListener('mouseenter', () => {
       ring.style.width = '48px';
